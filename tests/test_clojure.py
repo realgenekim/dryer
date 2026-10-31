@@ -294,6 +294,12 @@ def test_an_unknown_reader_frame_is_a_bug():
         Reader("")._deliver([("unknown",)], None)
 
 
+def test_old_metadata_syntax_is_metadata():
+    forms, warning = read_source("(f #^String x)\n")
+    assert warning is None
+    assert [item.name for item in forms[0].items] == ["f", "x"]
+
+
 def test_a_character_name_is_consumed():
     forms, warning = read_source("(defn alpha []\n  (str \\newline))\n")
     assert warning is None

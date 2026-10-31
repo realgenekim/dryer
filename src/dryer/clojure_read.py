@@ -338,6 +338,9 @@ class Reader:
         self._read_map_qualifier()
         return _NEED
 
+    def _dispatch_meta(self, stack: list[tuple], line: int):
+        return self._open_wrapper(stack, "^", line)
+
     def _dispatch_extension(self, stack: list[tuple], line: int):
         self.read_token()
         stack.append(("lit", line))
@@ -361,6 +364,7 @@ _DISPATCH = {
     '"': Reader._dispatch_string,
     "?": Reader._dispatch_cond,
     ":": Reader._dispatch_map,
+    "^": Reader._dispatch_meta,
 }
 
 
