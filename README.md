@@ -95,7 +95,7 @@ DUPLICATE score=0.89
 
 | Language | Candidate | Left out |
 | --- | --- | --- |
-| Clojure | every top-level form except `ns` | reader-conditional branches other than `:clj` |
+| Clojure | every top-level form except `ns` (a `defmethod` is one form); each method body of a `defrecord`, `deftype`, `extend-type`, `extend-protocol`, or of a `reify` / `proxy` bound by a top-level `def` | reader-conditional branches other than `:clj`; the record or extension shell itself |
 | Java | methods with a body | constructors, abstract methods, methods inside anonymous or local classes |
 | Go | functions and methods with a body | function literals stay inside the enclosing function |
 | TypeScript | functions, methods, and top-level arrow functions | callbacks nested inside another function |

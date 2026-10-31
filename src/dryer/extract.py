@@ -1,6 +1,8 @@
 """Pick the forms each language compares.
 
-Clojure compares every top-level list except `ns`, matching dry4clj. The other
+Clojure compares every top-level list except `ns`, matching dry4clj, except
+that record, type, protocol-extension, and top-level `reify` / `proxy` forms
+are compared one method body at a time. The other
 languages compare the functions and methods crapper scores: bodies, not
 signatures alone, and not callbacks nested inside another function. Rust
 functions inside `mod tests` are test code and are skipped.
@@ -9,7 +11,7 @@ functions inside `mod tests` are test code and are skipped.
 from __future__ import annotations
 
 from dryer.astnorm import normalize
-from dryer.clojure_read import is_candidate_form, max_line, normalize as normalize_clj
+from dryer.clojure_read import candidate_units, max_line, normalize as normalize_clj
 from dryer.clojure_read import read_source
 from dryer.model import Entry
 from dryer.shape import fingerprints, node_count
@@ -177,9 +179,8 @@ def _tree_entries(language: str, source: str, path: str, file: str) -> list[Entr
 def _clojure_entries(source: str, file: str) -> tuple[list[Entry], str | None]:
     forms, warning = read_source(source)
     entries = []
-    for form in forms:
-        if not is_candidate_form(form):
-            continue
+    units = [unit for form in forms for unit in candidate_units(form)]
+    for form in units:
         normalized = normalize_clj(form)
         entries.append(
             Entry(

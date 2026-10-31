@@ -347,3 +347,85 @@ def test_node_count_and_keyword_printing():
     assert repr(K("symbol")) == ":symbol"
     assert node_count(K("symbol")) == 1
     assert node_count([K("list"), K("symbol"), K("literal")]) == 4
+
+
+def test_syntax_quote_with_gensyms_and_unquote_splicing_reads():
+    source = (
+        "(defmacro timed [lock & body]\n"
+        "  `(let [t0# (System/nanoTime)]\n"
+        "     (locking ~lock\n"
+        "       (let [r# (do ~@body)] r#))))\n"
+        "(defn after [] 1)\n"
+    )
+    forms, warning = read_source(source)
+    assert warning is None
+    assert len(forms) == 2
+    binding = forms[0].items[3].items[1].items[1]
+    assert binding.kind == "vector"
+    assert binding.items[0].name == "t0#"
+    forms, warning = read_source("(def k :a/b:c)\n(def q x')\n")
+    assert warning is None
+    assert forms[1].items[2].name == "x'"
+
+
+def _units_of(source: str):
+    from dryer.clojure_read import candidate_units
+
+    forms, warning = read_source(source)
+    assert warning is None
+    return [unit for form in forms for unit in candidate_units(form)]
+
+
+def test_record_type_and_protocol_extensions_compare_each_method():
+    units = _units_of(
+        "(ns demo.core)\n"
+        "(defrecord A [x]\n  P\n  (one [_] (inc x))\n  Q\n  (two [_] (dec x)))\n"
+        "(deftype B [y]\n  P\n  (one [_] y))\n"
+        "(extend-type String P (one [s] s))\n"
+        "(extend-protocol P nil (one [_] 0) Long (one [n] n))\n"
+        "(def r (reify P (one [_] 1)))\n"
+        "(defonce p (proxy [JPanel] [] (paint [g] g)))\n"
+        "(def plain {:a 1})\n"
+        "(defmethod handle :go [e] e)\n"
+    )
+    heads = [(unit.items[0].name, unit.line) for unit in units]
+    assert heads == [
+        ("one", 4),
+        ("two", 6),
+        ("one", 9),
+        ("one", 10),
+        ("one", 11),
+        ("one", 11),
+        ("one", 12),
+        ("paint", 13),
+        ("def", 14),
+        ("defmethod", 15),
+    ]
+
+
+def test_duplicate_record_methods_report_their_own_lines(tmp_path):
+    body = (
+        "    (let [hit (get cache [n size])]\n"
+        "      (if hit\n"
+        "        (:image hit)\n"
+        "        (let [img (draw items n size)]\n"
+        "          (swap! cache assoc [n size] {:image img})\n"
+        "          img)))"
+    )
+    write_source(
+        tmp_path,
+        "render.clj",
+        "(ns demo.render)\n"
+        "(defrecord X [items cache]\n"
+        "  R\n"
+        "  (render [_ n size]\n" + body + ")\n"
+        "  (count-items [_] (count items)))\n"
+        "(defrecord H [items cache]\n"
+        "  R\n"
+        "  (render [_ n size]\n" + body + "))\n",
+    )
+    found = duplicates(tmp_path)
+    assert [(d.left.start_line, d.left.end_line, d.right.start_line, d.right.end_line) for d in found] == [
+        (4, 10, 14, 20)
+    ]
+    assert found[0].score == 1.0
