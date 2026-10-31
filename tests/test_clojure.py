@@ -372,6 +372,10 @@ def test_only_a_non_empty_list_that_is_not_ns_is_a_candidate():
     assert is_candidate_form(Coll("list", 1, items=[])) is False
     assert is_candidate_form(Sym("a", 1)) is False
     assert is_candidate_form(Coll("list", 1, items=[Sym("ns", 1), Sym("demo", 1)])) is False
+    assert (
+        is_candidate_form(Coll("list", 1, items=[Sym("clojure.core/ns", 1), Sym("demo", 1)]))
+        is False
+    )
     assert is_candidate_form(Coll("list", 1, items=[Sym("defn", 1)])) is True
     assert pr(normalize(Coll("bag", 1))) == "[:literal]"
 

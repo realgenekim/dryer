@@ -520,9 +520,9 @@ def normalize(form, head: bool = False):
 
 
 def is_candidate_form(form) -> bool:
-    """A non-empty top-level list whose head is not `ns`."""
+    """A non-empty top-level list whose head is not `ns` or `clojure.core/ns`."""
 
     if not isinstance(form, Coll) or form.kind != "list" or not form.items:
         return False
     head = form.items[0]
-    return not (isinstance(head, Sym) and head.name == "ns")
+    return not (isinstance(head, Sym) and head.name in {"ns", "clojure.core/ns"})
