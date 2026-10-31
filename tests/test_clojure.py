@@ -384,3 +384,39 @@ def test_node_count_and_keyword_printing():
     assert repr(K("symbol")) == ":symbol"
     assert node_count(K("symbol")) == 1
     assert node_count([K("list"), K("symbol"), K("literal")]) == 4
+
+
+def _shown(form):
+    if isinstance(form, Sym):
+        return form.name
+    if isinstance(form, Coll):
+        return [_shown(item) for item in form.items]
+    return type(form).__name__
+
+
+def test_var_quote_reads_one_form():
+    forms, warning = read_source("#'foo (defn kept [] 1)\n#'ns/priv\n#'#'x\n")
+    assert warning is None
+    assert [_shown(form) for form in forms] == [
+        ["var", "foo"],
+        ["defn", "kept", [], "Lit"],
+        ["var", "ns/priv"],
+        ["var", ["var", "x"]],
+    ]
+    forms, warning = read_source(
+        "(alter-var-root #'foo inc)\n"
+        "(defn f [] (#'priv 1 2))\n"
+        "[#'a #'b]\n"
+        "[#'a #'b #'c]\n"
+    )
+    assert warning is None
+    assert [_shown(form) for form in forms] == [
+        ["alter-var-root", ["var", "foo"], "inc"],
+        ["defn", "f", [], [["var", "priv"], "Lit", "Lit"]],
+        [["var", "a"], ["var", "b"]],
+        [["var", "a"], ["var", "b"], ["var", "c"]],
+    ]
+    forms, warning = read_source("{:tool-fn #'handle}\n(defn kept [] 1)\n")
+    assert warning is None
+    assert _shown(forms[0].pairs[0][1]) == ["var", "handle"]
+    assert len(forms) == 2

@@ -341,6 +341,11 @@ class Reader:
         self._read_map_qualifier()
         return _NEED
 
+    def _dispatch_var(self, stack: list[tuple], line: int):
+        self.get()
+        stack.append(("wrap", "var", line))
+        return _NEED
+
     def _dispatch_comment(self, _stack: list[tuple], _line: int):
         self.skip_line()
         return None
@@ -373,6 +378,7 @@ _DISPATCH = {
     ":": Reader._dispatch_map,
     "^": Reader._dispatch_meta,
     "!": Reader._dispatch_comment,
+    "'": Reader._dispatch_var,
 }
 
 
