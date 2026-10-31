@@ -373,7 +373,7 @@ def _units_of(source: str):
 
     forms, warning = read_source(source)
     assert warning is None
-    return [unit for form in forms for unit in candidate_units(form)]
+    return [unit for form in forms for unit, _shape in candidate_units(form)]
 
 
 def test_record_type_and_protocol_extensions_compare_each_method():
@@ -429,3 +429,121 @@ def test_duplicate_record_methods_report_their_own_lines(tmp_path):
         (4, 10, 14, 20)
     ]
     assert found[0].score == 1.0
+
+
+def _shown(form):
+    if isinstance(form, Sym):
+        return form.name
+    if isinstance(form, Coll):
+        return [_shown(item) for item in form.items]
+    return type(form).__name__
+
+
+def test_var_quote_reads_one_form():
+    forms, warning = read_source("#'foo (defn kept [] 1)\n#'ns/priv\n#'#'x\n")
+    assert warning is None
+    assert [_shown(form) for form in forms] == [
+        ["var", "foo"],
+        ["defn", "kept", [], "Lit"],
+        ["var", "ns/priv"],
+        ["var", ["var", "x"]],
+    ]
+    forms, warning = read_source(
+        "(alter-var-root #'foo inc)\n"
+        "(defn f [] (#'priv 1 2))\n"
+        "[#'a #'b]\n"
+        "[#'a #'b #'c]\n"
+    )
+    assert warning is None
+    assert [_shown(form) for form in forms] == [
+        ["alter-var-root", ["var", "foo"], "inc"],
+        ["defn", "f", [], [["var", "priv"], "Lit", "Lit"]],
+        [["var", "a"], ["var", "b"]],
+        [["var", "a"], ["var", "b"], ["var", "c"]],
+    ]
+
+
+def test_symbolic_values_are_literals():
+    forms, warning = read_source("[##Inf ##-Inf ##NaN]\n##Inf (defn g [] 1)\n")
+    assert warning is None
+    assert [_shown(form) for form in forms] == [
+        ["Lit", "Lit", "Lit"],
+        "Lit",
+        ["defn", "g", [], "Lit"],
+    ]
+
+
+def test_symbols_end_where_clojure_ends_them():
+    forms, warning = read_source(
+        "(f foo' a:b x# y)\n"
+        "(f x#{1 2})\n"
+        '(f x#"re")\n'
+        "(f x#(inc %))\n"
+        "(f x#?(:clj 1))\n"
+        "(f x#_y z)\n"
+    )
+    assert warning is None
+    assert [_shown(form) for form in forms] == [
+        ["f", "foo'", "a:b", "x#", "y"],
+        ["f", "x#", []],
+        ["f", "x#", "Lit"],
+        ["f", "x#", ["inc", "%"]],
+        ["f", "x#?", ["Kw", "Lit"]],
+        ["f", "x#_y", "z"],
+    ]
+    assert forms[1].items[2].kind == "map"
+
+
+def test_collections_record_their_start_column():
+    forms, warning = read_source("(a)  [b]\n  #{c} #(d)\n")
+    assert warning is None
+    assert [(form.line, form.column) for form in forms] == [(1, 1), (1, 6), (2, 3), (2, 8)]
+
+
+_METHOD_BODY = (
+    "(let [hit (get cache [n size])] (if hit (:image hit) "
+    "(let [img (draw items n size)] (swap! cache assoc [n size] {:image img}) img)))"
+)
+
+
+def test_methods_on_one_line_are_compared(tmp_path):
+    write_source(
+        tmp_path,
+        "same_line.clj",
+        "(extend-protocol R\n"
+        f"  A (render [_ n size] {_METHOD_BODY}) B (render [_ n size] {_METHOD_BODY}))\n",
+    )
+    found = duplicates(tmp_path, min_lines=1)
+    assert [(d.left.start_line, d.right.start_line, d.score) for d in found] == [(2, 2, 1.0)]
+
+
+def test_a_renamed_method_scores_like_a_renamed_defn(tmp_path):
+    write_source(
+        tmp_path,
+        "renamed.clj",
+        "(defrecord X [items cache]\n"
+        "  R\n"
+        "  (render [_ n size]\n"
+        f"    {_METHOD_BODY})\n"
+        "  (paint [_ n size]\n"
+        f"    {_METHOD_BODY}))\n"
+        "(defn render [n size]\n"
+        f"    {_METHOD_BODY})\n"
+        "(defn paint [n size]\n"
+        f"    {_METHOD_BODY})\n",
+    )
+    found = duplicates(tmp_path, min_lines=2)
+    scores = {(d.left.start_line, d.right.start_line): d.score for d in found}
+    assert scores[(3, 5)] == 1.0
+    assert scores[(7, 9)] == 1.0
+
+
+def test_read_errors_keep_the_forms_before_them():
+    for text, message in [
+        ("(a)\n{:k}\n", "2: map literal has an odd number of forms"),
+        ("(a)\n#@x\n", "2: expected a symbol"),
+        ("(a)\n'", "2: unexpected end of file"),
+    ]:
+        forms, warning = read_source(text)
+        assert [_shown(form) for form in forms] == [["a"]]
+        assert warning == message

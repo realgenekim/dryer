@@ -46,6 +46,8 @@ def _same_span(left: Entry, right: Entry) -> bool:
         return False
     if left.start_line != right.start_line:
         return False
+    if left.start_column != right.start_column:
+        return False
     return left.end_line == right.end_line
 
 

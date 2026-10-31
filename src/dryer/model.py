@@ -24,7 +24,11 @@ class Duplicate:
 
 @dataclass(frozen=True)
 class Entry:
-    """A normalized form ready to compare. Forms are only compared within one language."""
+    """A normalized form ready to compare. Forms are only compared within one language.
+
+    `start_column` tells apart forms that share their lines, such as two
+    Clojure methods on one line. It is 0 where it is not recorded.
+    """
 
     language: str
     file: str
@@ -32,3 +36,4 @@ class Entry:
     end_line: int
     nodes: int
     fingerprints: frozenset[str]
+    start_column: int = 0

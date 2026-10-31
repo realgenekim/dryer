@@ -11,7 +11,7 @@ functions inside `mod tests` are test code and are skipped.
 from __future__ import annotations
 
 from dryer.astnorm import normalize
-from dryer.clojure_read import candidate_units, max_line, normalize as normalize_clj
+from dryer.clojure_read import candidate_units, max_line
 from dryer.clojure_read import read_source
 from dryer.model import Entry
 from dryer.shape import fingerprints, node_count
@@ -180,8 +180,7 @@ def _clojure_entries(source: str, file: str) -> tuple[list[Entry], str | None]:
     forms, warning = read_source(source)
     entries = []
     units = [unit for form in forms for unit in candidate_units(form)]
-    for form in units:
-        normalized = normalize_clj(form)
+    for form, normalized in units:
         entries.append(
             Entry(
                 language="clojure",
@@ -190,6 +189,7 @@ def _clojure_entries(source: str, file: str) -> tuple[list[Entry], str | None]:
                 end_line=max_line(form),
                 nodes=node_count(normalized),
                 fingerprints=fingerprints(normalized),
+                start_column=form.column,
             )
         )
     return entries, warning
