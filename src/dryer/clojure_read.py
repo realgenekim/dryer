@@ -74,6 +74,12 @@ class Splice:
 _NEED = object()
 
 
+def _waits(frame, produced) -> bool:
+    """A `#'` or `#^` frame reads past a form that produced nothing, as Clojure does."""
+
+    return produced is None and frame[-1] == "wait"
+
+
 def _close_coll(kind: str, line: int, items: list, fn_star: bool, column: int):
     if fn_star:
         return Coll("list", line, items=[Sym("fn*", line), *items], column=column)
@@ -109,8 +115,8 @@ class Reader:
             self.line_start = self.i
         return ch
 
-    def skip_line(self) -> None:
-        while self.peek() not in (None, "\n"):
+    def skip_line(self, ends: tuple = (None, "\n")) -> None:
+        while self.peek() not in ends:
             self.get()
 
     def column(self) -> int:
@@ -218,7 +224,7 @@ class Reader:
         return _NEED
 
     def _deliver_wrap(self, frame, produced):
-        _tag, name, line = frame
+        _tag, name, line = frame[:3]
         items = [Sym(name, line)]
         if produced is not None and not isinstance(produced, Splice):
             items.append(produced)
@@ -237,6 +243,8 @@ class Reader:
             return self._deliver_coll(frame, produced)
         if tag == "discard":
             return self._deliver_discard(stack, produced)
+        if _waits(frame, produced):
+            return _NEED
         stack.pop()
         if tag == "wrap":
             return self._deliver_wrap(frame, produced)
@@ -357,15 +365,17 @@ class Reader:
 
     def _dispatch_var(self, stack: list[tuple], line: int):
         self.get()
-        stack.append(("wrap", "var", line))
+        stack.append(("wrap", "var", line, "wait"))
         return _NEED
 
     def _dispatch_comment(self, _stack: list[tuple], _line: int):
-        self.skip_line()
+        self.skip_line((None, "\n", "\r"))
         return None
 
-    def _dispatch_meta(self, stack: list[tuple], line: int):
-        return self._open_wrapper(stack, "^", line)
+    def _dispatch_meta(self, stack: list[tuple], _line: int):
+        self.get()
+        stack.append(("meta", "wait"))
+        return _NEED
 
     def _dispatch_symbolic(self, _stack: list[tuple], line: int):
         self.get()

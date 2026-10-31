@@ -240,6 +240,12 @@ def test_hash_bang_comments_out_the_rest_of_its_line():
     assert [form.items[0].name for form in forms] == ["f", "g"]
 
 
+def test_hash_bang_comment_ends_at_a_carriage_return():
+    forms, warning = read_source("(before) #!comment\r(after)")
+    assert warning is None
+    assert [form.items[0].name for form in forms] == ["before", "after"]
+
+
 def test_reader_conditional_keeps_clj_and_splices_a_collection():
     forms, warning = read_source("#?(:cljs (inc x) :default (dec x))\n")
     assert warning is None
@@ -588,3 +594,12 @@ def test_read_errors_keep_the_forms_before_them():
         forms, warning = read_source(text)
         assert [_shown(form) for form in forms] == [["a"]]
         assert warning == message
+
+
+def test_var_quote_and_old_metadata_wait_past_a_discard():
+    forms, warning = read_source("(#' #_x y)\n(#^ #_ :bad :good [x] y)\n")
+    assert warning is None
+    assert [_shown(form) for form in forms] == [
+        [["var", "y"]],
+        [["x"], "y"],
+    ]
