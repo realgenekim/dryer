@@ -58,9 +58,10 @@ class Lit:
 
 
 class Coll:
-    def __init__(self, kind: str, line: int, items=None, pairs=None):
+    def __init__(self, kind: str, line: int, items=None, pairs=None, column: int = 0):
         self.kind = kind
         self.line = line
+        self.column = column
         self.items = [] if items is None else items
         self.pairs = [] if pairs is None else pairs
 
@@ -73,15 +74,15 @@ class Splice:
 _NEED = object()
 
 
-def _close_coll(kind: str, line: int, items: list, fn_star: bool):
+def _close_coll(kind: str, line: int, items: list, fn_star: bool, column: int):
     if fn_star:
-        return Coll("list", line, items=[Sym("fn*", line), *items])
+        return Coll("list", line, items=[Sym("fn*", line), *items], column=column)
     if kind == "map":
         if len(items) % 2:
             raise ReadError(line, "map literal has an odd number of forms")
         pairs = [(items[index], items[index + 1]) for index in range(0, len(items), 2)]
-        return Coll("map", line, pairs=pairs)
-    return Coll(kind, line, items=list(items))
+        return Coll("map", line, pairs=pairs, column=column)
+    return Coll(kind, line, items=list(items), column=column)
 
 
 class Reader:
@@ -90,6 +91,7 @@ class Reader:
         self.n = len(text)
         self.i = 0
         self.line = 1
+        self.line_start = 0
 
     def peek(self) -> str | None:
         if self.i >= self.n:
@@ -104,11 +106,17 @@ class Reader:
         self.i += 1
         if ch == "\n":
             self.line += 1
+            self.line_start = self.i
         return ch
 
     def skip_line(self) -> None:
         while self.peek() not in (None, "\n"):
             self.get()
+
+    def column(self) -> int:
+        """The 1-based column of the next character."""
+
+        return self.i - self.line_start + 1
 
     def skip_ws(self) -> None:
         while not self.eof():
@@ -188,13 +196,13 @@ class Reader:
     def _next(self, stack: list[tuple]):
         self.skip_ws()
         if stack and stack[-1][0] == "coll":
-            _tag, end, kind, line, items, fn_star = stack[-1]
+            _tag, end, kind, line, items, fn_star, column = stack[-1]
             if self.eof():
                 raise ReadError(line, f"unterminated {kind}")
             if self.peek() == end:
                 self.get()
                 stack.pop()
-                return _close_coll(kind, line, items, fn_star)
+                return _close_coll(kind, line, items, fn_star, column)
         if self.eof():
             raise ReadError(self.line, "unexpected end of file")
         return self._open(stack)
@@ -254,9 +262,10 @@ class Reader:
         return spliced
 
     def _open_collection(self, stack: list[tuple], ch: str, line: int):
+        column = self.column()
         self.get()
         end, kind = _COLLECTIONS[ch]
-        stack.append(("coll", end, kind, line, [], False))
+        stack.append(("coll", end, kind, line, [], False, column))
         return _NEED
 
     def _open_atom(self, ch: str):
@@ -310,13 +319,15 @@ class Reader:
 
     def _dispatch_set(self, stack: list[tuple], _line: int):
         brace = self.line
+        column = self.column() - 1
         self.get()
-        stack.append(("coll", "}", "set", brace, [], False))
+        stack.append(("coll", "}", "set", brace, [], False, column))
         return _NEED
 
     def _dispatch_fn(self, stack: list[tuple], line: int):
+        column = self.column() - 1
         self.get()
-        stack.append(("coll", ")", "list", line, [], True))
+        stack.append(("coll", ")", "list", line, [], True, column))
         return _NEED
 
     def _dispatch_string(self, _stack: list[tuple], line: int):
@@ -356,6 +367,11 @@ class Reader:
     def _dispatch_meta(self, stack: list[tuple], line: int):
         return self._open_wrapper(stack, "^", line)
 
+    def _dispatch_symbolic(self, _stack: list[tuple], line: int):
+        self.get()
+        self.read_token()
+        return Lit(line)
+
     def _dispatch_extension(self, stack: list[tuple], line: int):
         self.read_token()
         stack.append(("lit", line))
@@ -382,6 +398,7 @@ _DISPATCH = {
     "^": Reader._dispatch_meta,
     "!": Reader._dispatch_comment,
     "'": Reader._dispatch_var,
+    "#": Reader._dispatch_symbolic,
 }
 
 
@@ -529,6 +546,7 @@ def normalize(form, head: bool = False):
 
 
 _TYPE_HEADS = {"defrecord", "deftype"}
+_EXTEND_HEADS = {"extend-type", "extend-protocol"}
 _DEF_HEADS = {"def", "defonce"}
 
 
@@ -556,29 +574,40 @@ def _anonymous_methods(value) -> list | None:
     return None
 
 
-def candidate_units(form) -> list:
-    """The forms compared for one top-level form.
-
-    A `defrecord`, `deftype`, `extend-type`, or `extend-protocol` is compared
-    one method body at a time, as is a `reify` or `proxy` bound by a top-level
-    `def`. Every other candidate form, `defmethod` included, is one unit.
-    """
-
-    if not is_candidate_form(form):
-        return []
+def _method_units(form) -> list | None:
     head = _head_name(form)
     items = form.items
     if head in _TYPE_HEADS:
         return _methods(items[3:])
-    if head == "extend-type":
-        return _methods(items[2:])
-    if head == "extend-protocol":
+    if head in _EXTEND_HEADS:
         return _methods(items[2:])
     if head in _DEF_HEADS and len(items) >= 3:
-        found = _anonymous_methods(items[-1])
-        if found is not None:
-            return found
-    return [form]
+        return _anonymous_methods(items[-1])
+    return None
+
+
+def _normalize_method(method):
+    """A method's name is normalized away, like the name of a `defn`."""
+
+    shape = normalize(method)
+    return [shape[0], K("symbol"), *shape[2:]]
+
+
+def candidate_units(form) -> list[tuple]:
+    """The forms compared for one top-level form, each with its shape.
+
+    A `defrecord`, `deftype`, `extend-type`, or `extend-protocol` is compared
+    one method body at a time, as is a `reify` or `proxy` bound by a top-level
+    `def`. A method's name is not part of its shape. Every other candidate
+    form, `defmethod` included, is one unit.
+    """
+
+    if not is_candidate_form(form):
+        return []
+    methods = _method_units(form)
+    if methods is None:
+        return [(form, normalize(form))]
+    return [(method, _normalize_method(method)) for method in methods]
 
 
 def is_candidate_form(form) -> bool:
