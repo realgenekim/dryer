@@ -103,6 +103,10 @@ class Reader:
             self.line += 1
         return ch
 
+    def skip_line(self) -> None:
+        while self.peek() not in (None, "\n"):
+            self.get()
+
     def skip_ws(self) -> None:
         while not self.eof():
             ch = self.peek()
@@ -110,8 +114,7 @@ class Reader:
                 self.get()
                 continue
             if ch == ";":
-                while not self.eof() and self.peek() != "\n":
-                    self.get()
+                self.skip_line()
                 continue
             break
 
@@ -338,6 +341,10 @@ class Reader:
         self._read_map_qualifier()
         return _NEED
 
+    def _dispatch_comment(self, _stack: list[tuple], _line: int):
+        self.skip_line()
+        return None
+
     def _dispatch_meta(self, stack: list[tuple], line: int):
         return self._open_wrapper(stack, "^", line)
 
@@ -365,6 +372,7 @@ _DISPATCH = {
     "?": Reader._dispatch_cond,
     ":": Reader._dispatch_map,
     "^": Reader._dispatch_meta,
+    "!": Reader._dispatch_comment,
 }
 
 
@@ -396,19 +404,11 @@ def _strip_bom(text: str) -> str:
     return text
 
 
-def _skip_shebang(reader: Reader, text: str) -> None:
-    if not text.startswith("#!"):
-        return
-    while reader.peek() not in (None, "\n"):
-        reader.get()
-
-
 def read_source(text: str) -> tuple[list, str | None]:
     """Top-level forms, plus a warning if a later form could not be read."""
 
     text = _strip_bom(text)
     reader = Reader(text)
-    _skip_shebang(reader, text)
     forms: list = []
     while True:
         reader.skip_ws()

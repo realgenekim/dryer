@@ -233,6 +233,13 @@ def test_bom_and_shebang_are_not_forms():
     assert [form.items[0].name for form in forms] == ["defn"]
 
 
+def test_hash_bang_comments_out_the_rest_of_its_line():
+    forms, warning = read_source("(f x)\n#! hi\n(g y)\n")
+    assert warning is None
+    assert len(forms) == 2
+    assert [form.items[0].name for form in forms] == ["f", "g"]
+
+
 def test_reader_conditional_keeps_clj_and_splices_a_collection():
     forms, warning = read_source("#?(:cljs (inc x) :default (dec x))\n")
     assert warning is None
