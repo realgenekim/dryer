@@ -541,6 +541,15 @@ def test_symbols_end_where_clojure_ends_them():
     assert forms[1].items[2].kind == "map"
 
 
+def test_numbers_end_where_clojure_ends_them():
+    forms, warning = read_source("[1'foo 1#_x -2'a]\n(+ 1 +)\n")
+    assert warning is None
+    assert [_shown(form) for form in forms] == [
+        ["Lit", ["quote", "foo"], "Lit", "Lit", ["quote", "a"]],
+        ["+", "Lit", "+"],
+    ]
+
+
 def test_collections_record_their_start_column():
     forms, warning = read_source("(a)  [b]\n  #{c} #(d)\n")
     assert warning is None

@@ -20,6 +20,8 @@ _TERMINATORS = set("()[]{}\";'@^`~\\,#:")
 # Clojure ends a symbol only at a terminating macro character: `#`, `'`, and
 # `:` may appear inside one, as in the auto-gensym `t0#` of a syntax-quote.
 _TOKEN_TERMINATORS = _TERMINATORS - set("#':")
+# A number ends at any macro character, so `1'a` is `1` then `'a`.
+_NUMBER_START = re.compile(r"[+-]?[0-9]")
 _COLLECTIONS = {"(": (")", "list"), "[": ("]", "vector"), "{": ("}", "map")}
 _WRAPPERS = {"'": "quote", "@": "deref", "`": "syntax-quote"}
 _ATOMS = set("\"\\:")
@@ -135,12 +137,12 @@ class Reader:
                 continue
             break
 
-    def read_token(self) -> str:
+    def read_token(self, terminators: set = _TOKEN_TERMINATORS) -> str:
         start = self.i
         line = self.line
         while not self.eof():
             ch = self.peek()
-            if ch in _WHITESPACE or ch in _TOKEN_TERMINATORS:
+            if ch in _WHITESPACE or ch in terminators:
                 break
             self.get()
         if self.i == start:
@@ -301,8 +303,13 @@ class Reader:
         stack.append(("meta",))
         return _NEED
 
+    def _token_terminators(self) -> set:
+        if _NUMBER_START.match(self.text, self.i):
+            return _TERMINATORS
+        return _TOKEN_TERMINATORS
+
     def _open_token(self, line: int):
-        token = self.read_token()
+        token = self.read_token(self._token_terminators())
         if _NUMBER.match(token):
             return Lit(line)
         return Sym(token, line)
