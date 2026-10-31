@@ -446,6 +446,28 @@ def test_record_type_and_protocol_extensions_compare_each_method():
     ]
 
 
+def test_qualified_core_heads_compare_each_method():
+    units = _units_of(
+        "(clojure.core/defrecord A [x] P (one [_] (inc x)))\n"
+        "(clojure.core/deftype B [y] P (one [_] y))\n"
+        "(clojure.core/extend-type String P (one [s] s))\n"
+        "(clojure.core/extend-protocol P nil (one [_] 0))\n"
+        "(clojure.core/def r (clojure.core/reify P (one [_] 1)))\n"
+        "(clojure.core/defonce p (clojure.core/proxy [JPanel] [] (paint [g] g)))\n"
+        "(other.ns/defrecord C [z] P (one [_] z))\n"
+    )
+    heads = [(unit.items[0].name, unit.line) for unit in units]
+    assert heads == [
+        ("one", 1),
+        ("one", 2),
+        ("one", 3),
+        ("one", 4),
+        ("one", 5),
+        ("paint", 6),
+        ("other.ns/defrecord", 7),
+    ]
+
+
 def test_duplicate_record_methods_report_their_own_lines(tmp_path):
     body = (
         "    (let [hit (get cache [n size])]\n"

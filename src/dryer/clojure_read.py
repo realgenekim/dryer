@@ -574,6 +574,15 @@ def _head_name(form) -> str | None:
     return head.name if isinstance(head, Sym) else None
 
 
+def _core_head(form) -> str | None:
+    """The head's name, read through a `clojure.core/` qualifier."""
+
+    head = _head_name(form)
+    if head is None:
+        return None
+    return head.removeprefix("clojure.core/")
+
+
 def _is_method(form) -> bool:
     return _head_name(form) is not None
 
@@ -583,7 +592,7 @@ def _methods(items) -> list:
 
 
 def _anonymous_methods(value) -> list | None:
-    head = _head_name(value)
+    head = _core_head(value)
     if head == "reify":
         return _methods(value.items[1:])
     if head == "proxy":
@@ -592,7 +601,7 @@ def _anonymous_methods(value) -> list | None:
 
 
 def _method_units(form) -> list | None:
-    head = _head_name(form)
+    head = _core_head(form)
     items = form.items
     if head in _TYPE_HEADS:
         return _methods(items[3:])
@@ -615,7 +624,7 @@ def candidate_units(form) -> list[tuple]:
 
     A `defrecord`, `deftype`, `extend-type`, or `extend-protocol` is compared
     one method body at a time, as is a `reify` or `proxy` bound by a top-level
-    `def`. A method's name is not part of its shape. Every other candidate
+    `def`; each head may be spelled with `clojure.core/`. A method's name is not part of its shape. Every other candidate
     form, `defmethod` included, is one unit.
     """
 
