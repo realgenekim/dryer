@@ -210,16 +210,22 @@ class Reader:
             items.append(produced)
         return Coll("list", line, items=items)
 
+    def _deliver_discard(self, stack: list[tuple], produced):
+        if produced is None:
+            return _NEED
+        stack.pop()
+        return None
+
     def _deliver(self, stack: list[tuple], produced):
         frame = stack[-1]
         tag = frame[0]
         if tag == "coll":
             return self._deliver_coll(frame, produced)
+        if tag == "discard":
+            return self._deliver_discard(stack, produced)
         stack.pop()
         if tag == "wrap":
             return self._deliver_wrap(frame, produced)
-        if tag == "discard":
-            return None
         if tag == "meta":
             return _NEED
         if tag == "lit":

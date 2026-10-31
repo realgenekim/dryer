@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from dryer.clojure_read import Coll, Sym, is_candidate_form, normalize, read_source
+import pytest
+
+from dryer.clojure_read import Coll, Reader, Sym, is_candidate_form, normalize, read_source
 from dryer.model import Duplicate, Span
 from dryer.report import format_text, render_edn
 from dryer.scan import find_duplicates, scan_files
@@ -273,6 +275,23 @@ def test_reader_macros_wrap_the_following_form():
     forms, warning = read_source("'#_x\n")
     assert warning is None
     assert [item.name for item in forms[0].items] == ["quote"]
+
+
+def test_a_discard_skips_a_discarded_form():
+    forms, warning = read_source("#_#_ a b c\n")
+    assert warning is None
+    assert [form.name for form in forms] == ["c"]
+
+
+def test_a_tagged_literal_is_one_literal():
+    forms, warning = read_source('(f #inst "2020" x)\n')
+    assert warning is None
+    assert [type(item).__name__ for item in forms[0].items] == ["Sym", "Lit", "Sym"]
+
+
+def test_an_unknown_reader_frame_is_a_bug():
+    with pytest.raises(AssertionError):
+        Reader("")._deliver([("unknown",)], None)
 
 
 def test_a_character_name_is_consumed():
