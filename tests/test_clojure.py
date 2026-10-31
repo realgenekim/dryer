@@ -240,6 +240,12 @@ def test_hash_bang_comments_out_the_rest_of_its_line():
     assert [form.items[0].name for form in forms] == ["f", "g"]
 
 
+def test_hash_bang_comment_ends_at_a_carriage_return():
+    forms, warning = read_source("(before) #!comment\r(after)")
+    assert warning is None
+    assert [form.items[0].name for form in forms] == ["before", "after"]
+
+
 def test_reader_conditional_keeps_clj_and_splices_a_collection():
     forms, warning = read_source("#?(:cljs (inc x) :default (dec x))\n")
     assert warning is None

@@ -109,8 +109,8 @@ class Reader:
             self.line += 1
         return ch
 
-    def skip_line(self) -> None:
-        while self.peek() not in (None, "\n"):
+    def skip_line(self, ends: tuple = (None, "\n")) -> None:
+        while self.peek() not in ends:
             self.get()
 
     def skip_ws(self) -> None:
@@ -355,7 +355,7 @@ class Reader:
         return _NEED
 
     def _dispatch_comment(self, _stack: list[tuple], _line: int):
-        self.skip_line()
+        self.skip_line((None, "\n", "\r"))
         return None
 
     def _dispatch_meta(self, stack: list[tuple], _line: int):
