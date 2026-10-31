@@ -310,9 +310,10 @@ def test_a_bare_colon_is_an_empty_keyword():
 
 
 def test_namespaced_maps_keep_the_map():
-    for source in ("#:foo{:a 1}\n", "#::{:a 1}\n", "#:{:a 1}\n"):
+    for source in ("#:foo{:a 1}\n", "#::{:a 1}\n", "#:{:a 1}\n", "#::alias{:a 1}\n"):
         forms, warning = read_source(source)
         assert warning is None, source
+        assert len(forms) == 1, source
         assert forms[0].kind == "map"
         assert forms[0].pairs[0][0].name == "a"
 

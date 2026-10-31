@@ -326,10 +326,9 @@ class Reader:
         return _NEED
 
     def _read_map_qualifier(self) -> None:
-        peeked = self.peek()
-        if peeked == ":":
+        if self.peek() == ":":
             self.get()
-            return
+        peeked = self.peek()
         if peeked is None or peeked == "{" or peeked in _WHITESPACE:
             return
         self.read_token()
