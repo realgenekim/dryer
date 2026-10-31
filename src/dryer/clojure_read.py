@@ -17,6 +17,9 @@ from dryer.shape import K
 
 _WHITESPACE = set(" \t\n\r,")
 _TERMINATORS = set("()[]{}\";'@^`~\\,#:")
+# Clojure ends a symbol only at a terminating macro character: `#`, `'`, and
+# `:` may appear inside one, as in the auto-gensym `t0#` of a syntax-quote.
+_TOKEN_TERMINATORS = _TERMINATORS - set("#':")
 _COLLECTIONS = {"(": (")", "list"), "[": ("]", "vector"), "{": ("}", "map")}
 _WRAPPERS = {"'": "quote", "@": "deref", "`": "syntax-quote"}
 _ATOMS = set("\"\\:")
@@ -123,7 +126,7 @@ class Reader:
         line = self.line
         while not self.eof():
             ch = self.peek()
-            if ch in _WHITESPACE or ch in _TERMINATORS:
+            if ch in _WHITESPACE or ch in _TOKEN_TERMINATORS:
                 break
             self.get()
         if self.i == start:
@@ -523,6 +526,59 @@ def normalize(form, head: bool = False):
             continue
         cache[key] = _assemble_form(current, cache)
     return cache[(id(form), head)]
+
+
+_TYPE_HEADS = {"defrecord", "deftype"}
+_DEF_HEADS = {"def", "defonce"}
+
+
+def _head_name(form) -> str | None:
+    if not isinstance(form, Coll) or form.kind != "list" or not form.items:
+        return None
+    head = form.items[0]
+    return head.name if isinstance(head, Sym) else None
+
+
+def _is_method(form) -> bool:
+    return _head_name(form) is not None
+
+
+def _methods(items) -> list:
+    return [item for item in items if _is_method(item)]
+
+
+def _anonymous_methods(value) -> list | None:
+    head = _head_name(value)
+    if head == "reify":
+        return _methods(value.items[1:])
+    if head == "proxy":
+        return _methods(value.items[3:])
+    return None
+
+
+def candidate_units(form) -> list:
+    """The forms compared for one top-level form.
+
+    A `defrecord`, `deftype`, `extend-type`, or `extend-protocol` is compared
+    one method body at a time, as is a `reify` or `proxy` bound by a top-level
+    `def`. Every other candidate form, `defmethod` included, is one unit.
+    """
+
+    if not is_candidate_form(form):
+        return []
+    head = _head_name(form)
+    items = form.items
+    if head in _TYPE_HEADS:
+        return _methods(items[3:])
+    if head == "extend-type":
+        return _methods(items[2:])
+    if head == "extend-protocol":
+        return _methods(items[2:])
+    if head in _DEF_HEADS and len(items) >= 3:
+        found = _anonymous_methods(items[-1])
+        if found is not None:
+            return found
+    return [form]
 
 
 def is_candidate_form(form) -> bool:
