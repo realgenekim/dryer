@@ -420,3 +420,12 @@ def test_var_quote_reads_one_form():
     assert warning is None
     assert _shown(forms[0].pairs[0][1]) == ["var", "handle"]
     assert len(forms) == 2
+
+
+def test_var_quote_and_old_metadata_wait_past_a_discard():
+    forms, warning = read_source("(#' #_x y)\n(#^ #_ :bad :good [x] y)\n")
+    assert warning is None
+    assert [_shown(form) for form in forms] == [
+        [["var", "y"]],
+        [["x"], "y"],
+    ]

@@ -70,6 +70,12 @@ class Splice:
 _NEED = object()
 
 
+def _waits(frame, produced) -> bool:
+    """A `#'` or `#^` frame reads past a form that produced nothing, as Clojure does."""
+
+    return produced is None and frame[-1] == "wait"
+
+
 def _close_coll(kind: str, line: int, items: list, fn_star: bool):
     if fn_star:
         return Coll("list", line, items=[Sym("fn*", line), *items])
@@ -207,7 +213,7 @@ class Reader:
         return _NEED
 
     def _deliver_wrap(self, frame, produced):
-        _tag, name, line = frame
+        _tag, name, line = frame[:3]
         items = [Sym(name, line)]
         if produced is not None and not isinstance(produced, Splice):
             items.append(produced)
@@ -226,6 +232,8 @@ class Reader:
             return self._deliver_coll(frame, produced)
         if tag == "discard":
             return self._deliver_discard(stack, produced)
+        if _waits(frame, produced):
+            return _NEED
         stack.pop()
         if tag == "wrap":
             return self._deliver_wrap(frame, produced)
@@ -343,15 +351,17 @@ class Reader:
 
     def _dispatch_var(self, stack: list[tuple], line: int):
         self.get()
-        stack.append(("wrap", "var", line))
+        stack.append(("wrap", "var", line, "wait"))
         return _NEED
 
     def _dispatch_comment(self, _stack: list[tuple], _line: int):
         self.skip_line()
         return None
 
-    def _dispatch_meta(self, stack: list[tuple], line: int):
-        return self._open_wrapper(stack, "^", line)
+    def _dispatch_meta(self, stack: list[tuple], _line: int):
+        self.get()
+        stack.append(("meta", "wait"))
+        return _NEED
 
     def _dispatch_extension(self, stack: list[tuple], line: int):
         self.read_token()
